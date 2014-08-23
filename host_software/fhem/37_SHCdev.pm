@@ -103,6 +103,7 @@ my %auto_devtype = (
   "Weather.Temperature"                   => "EnvSensor",
   "Weather.HumidityTemperature"           => "EnvSensor",
   "Weather.BarometricPressureTemperature" => "EnvSensor",
+  "Weather.BarometricPressureTemperatureHumidity" => "EnvSensor",
   "Environment.Brightness"                => "EnvSensor",
   "Environment.Distance"                  => "EnvSensor",
   "GPIO.DigitalPin"                       => "EnvSensor",
@@ -293,6 +294,15 @@ sub SHCdev_Parse($$)
 
           readingsBulkUpdate($rhash, "barometric_pressure", $bar);
           readingsBulkUpdate($rhash, "temperature",         $tmp);
+        }
+        when ('BarometricPressureTemperatureHumidity') {
+          my $bar = $parser->getField("BarometricPressure") / 100;    # parser returns pascal, use hPa
+          my $tmp = $parser->getField("Temperature") / 100;           # parser returns centigrade
+          my $hum = $parser->getField("Humidity") / 10;        # parser returns 1/10 percent
+
+          readingsBulkUpdate($rhash, "barometric_pressure", $bar);
+          readingsBulkUpdate($rhash, "temperature",         $tmp);
+		  readingsBulkUpdate($rhash, "humidity",    $hum);
         }
       }
     }

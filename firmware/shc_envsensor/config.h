@@ -39,6 +39,14 @@
 #define SHT11_SDA	        (1<<PC3)
 #define SHT11_LOWRES	    SHT11_RESOLUTION	
 
+// DHT11 hum/temp sensor
+
+#define DHT_DDR DDRC
+#define DHT_PORT PORTC
+#define DHT_PIN PINC
+#define DHT_INPUTPIN PC2
+
+// ---
 
 #define GLUE(a, b)	a##b
 #define PORT(x)		GLUE(PORT, x)

@@ -39,6 +39,7 @@
 #include "lm75.h"
 #include "bmp085.h"
 #include "srf02.h"
+#include "dht11/dht11.h"
 
 #include "aes256.h"
 #include "util.h"
@@ -510,14 +511,14 @@ void sht11_measure_loop(void)
 
 void measure_temperature_i2c(void)
 {
-	if ((temperature_sensor_type != TEMPERATURESENSORTYPE_DS7505) && (temperature_sensor_type != TEMPERATURESENSORTYPE_BMP085))
-		return;
-
-	if (!countWakeup(&temperature))
+	if (temperature_sensor_type == TEMPERATURESENSORTYPE_NOSENSOR)
 		return;
 
 	if (temperature_sensor_type == TEMPERATURESENSORTYPE_DS7505)
 	{
+		if (!countWakeup(&temperature))
+			return;
+
 		lm75_wakeup();
 		_delay_ms(lm75_get_meas_time_ms());
 		temperature.val += lm75_get_tmp();
@@ -525,20 +526,35 @@ void measure_temperature_i2c(void)
 	}
 	else if (temperature_sensor_type == TEMPERATURESENSORTYPE_BMP085)
 	{
+		if (!countWakeup(&temperature))
+			return;
+
 		temperature.val += bmp085_meas_temp();
 	}
 }
 
 void measure_temperature_other(void)
 {
-	if (temperature_sensor_type != TEMPERATURESENSORTYPE_SHT15)
+	if (temperature_sensor_type == TEMPERATURESENSORTYPE_NOSENSOR)
 		return;
 
-	if (!countWakeup(&temperature))
-		return;
+    if (temperature_sensor_type == HUMIDITYSENSORTYPE_SHT15)
+	{
+		if (!countWakeup(&temperature))
+			return;
 
-	sht11_measure_loop();
-	temperature.val += sht11_get_tmp();
+		sht11_measure_loop();
+		temperature.val += sht11_get_tmp();
+	}
+	else if (temperature_sensor_type == TEMPERATURESENSORTYPE_DHT11)
+	{
+		if (!countWakeup(&temperature))
+			return;
+
+		int8_t temperature_dht11 = 0;
+		dht_gettemperature(&temperature_dht11);
+		temperature.val += temperature_dht11 * 100;
+	}
 }
 
 void measure_humidity_other(void)
@@ -546,11 +562,11 @@ void measure_humidity_other(void)
 	if (humidity_sensor_type == HUMIDITYSENSORTYPE_NOSENSOR)
 		return;
 
-	if (!countWakeup(&humidity))
-		return;
-
 	if (humidity_sensor_type == HUMIDITYSENSORTYPE_SHT15)
 	{
+		if (!countWakeup(&humidity))
+			return;
+
 		// actually measure if not done already while getting temperature
 		if (temperature_sensor_type != TEMPERATURESENSORTYPE_SHT15)
 		{
@@ -558,6 +574,15 @@ void measure_humidity_other(void)
 		}
 	
 		humidity.val += sht11_get_hum();
+	} 
+	else if (humidity_sensor_type == HUMIDITYSENSORTYPE_DHT11)
+	{
+		if (!countWakeup(&humidity))
+			return;
+
+		int8_t humidity_dht11 = 0;
+		dht_gethumidity(&humidity_dht11) ;
+		humidity.val += humidity_dht11 * 100;
 	}
 }
 
@@ -566,11 +591,11 @@ void measure_barometric_pressure_i2c(void)
 	if (barometric_sensor_type == BAROMETRICSENSORTYPE_NOSENSOR)
 		return;
 
-	if (!countWakeup(&barometric_pressure))
-		return;
-
 	if (barometric_sensor_type == BAROMETRICSENSORTYPE_BMP085)
 	{
+		if (!countWakeup(&barometric_pressure))
+			return;
+
 		barometric_pressure.val += bmp085_meas_pressure();
 	}
 }
@@ -580,11 +605,11 @@ void measure_distance_i2c(void)
 	if (distance_sensor_type == DISTANCESENSORTYPE_NOSENSOR)
 		return;
 
-	if (!countWakeup(&distance))
-		return;
-
 	if (distance_sensor_type == DISTANCESENSORTYPE_SRF02)
 	{
+		if (!countWakeup(&distance))
+			return;
+
 		distance.val += srf02_get_distance();
 		//UART_PUTF("Dist sum = %u cm\r\n", distance.val);
 	}
@@ -696,7 +721,6 @@ void prepare_humiditytemperature(void)
 	pkg_header_init_weather_humiditytemperature_status();
 	msg_weather_humiditytemperature_set_humidity(humidity.val / 10); // in permill
 	msg_weather_humiditytemperature_set_temperature(temperature.val);
-	
 	UART_PUTF2("Send humidity: %u.%u%%, temperature: ", humidity.val / 100, humidity.val % 100);
 	print_signed(temperature.val);
 	UART_PUTS(" deg.C\r\n");
@@ -713,12 +737,30 @@ void prepare_barometricpressuretemperature(void)
 	pkg_header_init_weather_barometricpressuretemperature_status();
 	msg_weather_barometricpressuretemperature_set_barometricpressure(barometric_pressure.val);
 	msg_weather_barometricpressuretemperature_set_temperature(temperature.val);
-
 	UART_PUTF("Send barometric pressure: %ld pascal, temperature: ", barometric_pressure.val);
 	print_signed(temperature.val);
 	UART_PUTS(" deg.C\r\n");
-	
+
 	barometric_pressure.val = 0;
+	temperature.val = 0;
+}
+
+void prepare_barometricpressuretemperaturehumidity(void)
+{
+	average(&barometric_pressure);
+	average(&humidity); // in 100 * % rel.
+	average(&temperature);
+	pkg_header_init_weather_barometricpressuretemperatureumidity_status();
+	msg_weather_barometricpressuretemperaturehumidity_set_barometricpressure(barometric_pressure.val);
+	msg_weather_barometricpressuretemperaturehumidity_set_temperature(temperature.val);
+	msg_weather_barometricpressuretemperaturehumidity_set_humidity(humidity.val / 10); // in permill
+	UART_PUTF("Send barometric pressure: %ld pascal, temperature: ", barometric_pressure.val);
+	print_signed(temperature.val);
+	UART_PUTS(" deg.C, ");
+	UART_PUTF2("humidity: %u.%u%%\r\n", humidity.val / 100, humidity.val % 100);
+
+	barometric_pressure.val = 0;
+	humidity.val = 0;
 	temperature.val = 0;
 }
 
@@ -785,6 +827,21 @@ void prepare_version(void)
 	UART_PUTF4("Send version: v%u.%u.%u (%08lx)\r\n", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_HASH);
 	
 	version_wupCnt = 0;
+}
+
+void sendPacket(uint16_t device_id)
+{
+	pkg_header_set_senderid(device_id);
+	pkg_header_set_packetcounter(packetcounter);
+	pkg_header_calc_crc32();
+	rfm12_send_bufx();
+	rfm12_tick(); // send packet, and then WAIT SOME TIME BEFORE GOING TO SLEEP (otherwise packet would not be sent)
+
+	switch_led(1);
+	_delay_ms(200);
+	switch_led(0);
+	
+	inc_packetcounter();
 }
 
 // ---------- main loop ----------
@@ -953,67 +1010,69 @@ int main(void)
 			// measure other values, non-I2C devices
 			measure_temperature_other();
 			measure_humidity_other();
-			
 			version_wupCnt++;
 		}
-
-		// search for value to send with avgInt reached
-		bool send = true;
 		
 		if (di_change)
 		{
 			prepare_digitalpin();
+			sendPacket(device_id);
 		}
-		else if (ai_change)
+		if (ai_change)
 		{
 			prepare_analogpin();
+			sendPacket(device_id);
 		}
-		else if (humidity.measCnt >= humidity.avgInt)
+		if (humidity.measCnt >= humidity.avgInt && barometric_pressure.measCnt >= barometric_pressure.avgInt && temperature.measCnt >= temperature.avgInt) {
+			prepare_barometricpressuretemperaturehumidity();
+			sendPacket(device_id);
+		}
+		if (humidity.measCnt >= humidity.avgInt)
 		{
 			prepare_humiditytemperature();
+			sendPacket(device_id);
 		}
-		else if (barometric_pressure.measCnt >= barometric_pressure.avgInt)
+		if (barometric_pressure.measCnt >= barometric_pressure.avgInt)
 		{
 			prepare_barometricpressuretemperature();
+			sendPacket(device_id);
 		}
-		else if (temperature.measCnt >= temperature.avgInt)
+		if (temperature.measCnt >= temperature.avgInt)
 		{
 			prepare_temperature();
+			sendPacket(device_id);
 		}
-		else if (distance.measCnt >= distance.avgInt)
+/* TODO: create message
+		if (barometric_pressure.measCnt >= barometric_pressure.avgInt)
+		{
+			prepare_barometricpressure();
+			sendPacket(device_id);
+		}
+		if (humidity.measCnt >= humidity.avgInt)
+		{
+			prepare_humidity();
+			sendPacket(device_id);
+		}
+*/
+		if (distance.measCnt >= distance.avgInt)
 		{
 			prepare_distance();
+			sendPacket(device_id);
 		}
-		else if (brightness.measCnt >= brightness.avgInt)
+		if (brightness.measCnt >= brightness.avgInt)
 		{
 			prepare_brightness();
+			sendPacket(device_id);
 		}
-		else if (battery_voltage.measCnt >= battery_voltage.avgInt)
+		if (battery_voltage.measCnt >= battery_voltage.avgInt)
 		{
 			prepare_battery_voltage();
+			sendPacket(device_id);
 		}
-		else if (version_wupCnt >= version_measInt)
+		if (version_wupCnt >= version_measInt)
 		{
 			prepare_version();
-		}
-		else
-		{
-			send = false;
-		}
-		
-		if (send)
-		{
-			pkg_header_set_senderid(device_id);
-			pkg_header_set_packetcounter(packetcounter);
-			pkg_header_calc_crc32();
-			rfm12_send_bufx();
-			rfm12_tick(); // send packet, and then WAIT SOME TIME BEFORE GOING TO SLEEP (otherwise packet would not be sent)
-
-			switch_led(1);
-			_delay_ms(200);
-			switch_led(0);
-			
-			inc_packetcounter();
+			sendPacket(device_id);
 		}
 
 		// Go to sleep. Wakeup by RFM12 wakeup-interrupt or pin change (if configured).

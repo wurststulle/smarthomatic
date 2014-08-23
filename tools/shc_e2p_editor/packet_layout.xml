@@ -356,6 +356,36 @@
 				<MaxVal>32767</MaxVal>
 			</IntValue>
 		</Message>
+		<Message>
+			<Name>BarometricPressureTemperatureHumidity</Name>
+			<Description>This is a message containing barometric pressure, temperature and umidity.</Description>
+			<MessageID>4</MessageID>
+			<MessageType>0</MessageType>
+			<MessageType>8</MessageType>
+			<MessageType>10</MessageType>
+			<Validity>test</Validity>
+			<UIntValue>
+				<ID>BarometricPressure</ID>
+				<Description>barometric pressure in pascal</Description>
+				<Bits>17</Bits>
+				<MinVal>0</MinVal>
+				<MaxVal>131071</MaxVal>
+			</UIntValue>
+			<IntValue>
+				<ID>Temperature</ID>
+				<Description>temperature [1/100 degree celsius], -50°C = -5000, 50°C = 5000</Description>
+				<Bits>16</Bits>
+				<MinVal>-32768</MinVal>
+				<MaxVal>32767</MaxVal>
+			</IntValue>
+			<UIntValue>
+				<ID>Humidity</ID>
+				<Description>relative humidity permill, 0..1000 (other values not defined)</Description>
+				<Bits>10</Bits>
+				<MinVal>0</MinVal>
+				<MaxVal>1000</MaxVal>
+			</UIntValue>
+		</Message>
 	</MessageGroup>
 	<MessageGroup>
 		<Name>Environment</Name>

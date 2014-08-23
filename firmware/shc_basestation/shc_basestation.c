@@ -159,6 +159,14 @@ void decode_data(uint8_t len)
 						print_signed(msg_weather_barometricpressuretemperature_get_temperature());
 						UART_PUTS(";");
 						break;
+					case MESSAGEID_WEATHER_BAROMETRICPRESSURETEMPERATUREHUMIDITY:
+						u32 = msg_weather_barometricpressuretemperaturehumidity_get_barometricpressure();
+						UART_PUTF("Pressure=%ld;Temperature=", u32);
+						print_signed(msg_weather_barometricpressuretemperaturehumidity_get_temperature());
+						u16 = msg_weather_barometricpressuretemperaturehumidity_get_humidity();
+						UART_PUTF2("; Humidity=%u.%u", u16 / 10, u16 % 10);
+						UART_PUTS(";");
+						break;
 					default:
 						break;
 				}
