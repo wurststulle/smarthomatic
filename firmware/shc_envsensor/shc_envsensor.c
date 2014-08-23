@@ -793,6 +793,21 @@ void prepare_version(void)
 	version_wupCnt = 0;
 }
 
+void sendPacket(uint16_t device_id)
+{
+	pkg_header_set_senderid(device_id);
+	pkg_header_set_packetcounter(packetcounter);
+	pkg_header_calc_crc32();
+	rfm12_send_bufx();
+	rfm12_tick(); // send packet, and then WAIT SOME TIME BEFORE GOING TO SLEEP (otherwise packet would not be sent)
+
+	switch_led(1);
+	_delay_ms(200);
+	switch_led(0);
+	
+	inc_packetcounter();
+}
+
 // ---------- main loop ----------
 
 int main(void)
@@ -959,67 +974,53 @@ int main(void)
 			// measure other values, non-I2C devices
 			measure_temperature_other();
 			measure_humidity_other();
-			
 			version_wupCnt++;
 		}
-
-		// search for value to send with avgInt reached
-		bool send = true;
 		
 		if (di_change)
 		{
 			prepare_digitalpin();
+			sendPacket(device_id);
 		}
-		else if (ai_change)
+		if (ai_change)
 		{
 			prepare_analogpin();
+			sendPacket(device_id);
 		}
-		else if (humidity.measCnt >= humidity.avgInt)
+		if (humidity.measCnt >= humidity.avgInt)
 		{
 			prepare_humiditytemperature();
+			sendPacket(device_id);
 		}
-		else if (barometric_pressure.measCnt >= barometric_pressure.avgInt)
+		if (barometric_pressure.measCnt >= barometric_pressure.avgInt)
 		{
 			prepare_barometricpressuretemperature();
+			sendPacket(device_id);
 		}
-		else if (temperature.measCnt >= temperature.avgInt)
+		if (temperature.measCnt >= temperature.avgInt)
 		{
 			prepare_temperature();
+			sendPacket(device_id);
 		}
-		else if (distance.measCnt >= distance.avgInt)
+		if (distance.measCnt >= distance.avgInt)
 		{
 			prepare_distance();
+			sendPacket(device_id);
 		}
-		else if (brightness.measCnt >= brightness.avgInt)
+		if (brightness.measCnt >= brightness.avgInt)
 		{
 			prepare_brightness();
+			sendPacket(device_id);
 		}
-		else if (battery_voltage.measCnt >= battery_voltage.avgInt)
+		if (battery_voltage.measCnt >= battery_voltage.avgInt)
 		{
 			prepare_battery_voltage();
+			sendPacket(device_id);
 		}
-		else if (version_wupCnt >= version_measInt)
+		if (version_wupCnt >= version_measInt)
 		{
 			prepare_version();
-		}
-		else
-		{
-			send = false;
-		}
-		
-		if (send)
-		{
-			pkg_header_set_senderid(device_id);
-			pkg_header_set_packetcounter(packetcounter);
-			pkg_header_calc_crc32();
-			rfm12_send_bufx();
-			rfm12_tick(); // send packet, and then WAIT SOME TIME BEFORE GOING TO SLEEP (otherwise packet would not be sent)
-
-			switch_led(1);
-			_delay_ms(200);
-			switch_led(0);
-			
-			inc_packetcounter();
+			sendPacket(device_id);
 		}
 
 		// Go to sleep. Wakeup by RFM12 wakeup-interrupt or pin change (if configured).
@@ -1028,3 +1029,4 @@ int main(void)
         sleep_mode();
 	}
 }
+
