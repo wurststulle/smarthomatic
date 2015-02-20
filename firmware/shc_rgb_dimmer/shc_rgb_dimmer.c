@@ -26,10 +26,13 @@
 
 #include "../src_common/msggrp_generic.h"
 #include "../src_common/msggrp_dimmer.h"
+#include "../src_common/msggrp_gpio.h"
+#include "../src_common/msggrp_powerswitch.h"
 
 #include "../src_common/e2p_hardware.h"
 #include "../src_common/e2p_generic.h"
 #include "../src_common/e2p_rgbdimmer.h"
+#include "../src_common/e2p_powerswitch.h"
 
 #include "../src_common/aes256.h"
 #include "../src_common/util.h"
@@ -38,6 +41,14 @@
 #define RGBLED_DDR DDRD
 #define RGBLED_PORT PORTD
 #define RGBLED_PINPORT PIND
+
+#define SWITCH_COUNT 6 // Don't change! (PC0 to PC5 are supported)
+
+#define RELAIS_PORT PORTC
+#define RELAIS_PIN_START 0
+
+bool switch_state[SWITCH_COUNT];
+uint16_t switch_timeout[SWITCH_COUNT];
 
 #define SEND_STATUS_EVERY_SEC 1800 // how often should a status be sent?
 #define SEND_VERSION_STATUS_CYCLE 50 // send version status x times less than switch status (~once per day)
@@ -560,6 +571,110 @@ void send_ack(uint32_t acksenderid, uint32_t ackpacketcounter, bool error)
 	rfm12_send_bufx();
 }
 
+void switchRelais(int8_t num, bool on, uint16_t timeout, bool dbgmsg)
+{
+	if (dbgmsg)
+	{
+		UART_PUTF3("Switching relais %u to %u with timeout %us.\r\n", num + 1, on, timeout);
+	}
+
+	if (num >= SWITCH_COUNT)
+	{
+		UART_PUTF("\r\nRelais number %u > SWITCH_COUNT, ignoring.", num);
+		return;
+	}
+
+	bool change_state = switch_state[num] != on;
+	bool change_timeout = switch_timeout[num] != timeout;
+
+	if (change_state)
+	{
+		switch_state[num] = on;
+		e2p_powerswitch_set_switchstate(num, on);
+
+		if (on)
+		{
+			sbi(RELAIS_PORT, RELAIS_PIN_START + num);
+			switch_led(1);
+		}
+		else
+		{
+			cbi(RELAIS_PORT, RELAIS_PIN_START + num);
+			switch_led(0);
+		}
+	}
+
+	if (change_timeout)
+	{
+		switch_timeout[num] = timeout;
+		//e2p_powerswitch_set_switchtimeout(num, timeout);
+	}
+}
+
+void process_gpio_digitalport(MessageTypeEnum messagetype)
+{
+	// "Set" or "SetGet" -> modify switch state
+	if ((messagetype == MESSAGETYPE_SET) || (messagetype == MESSAGETYPE_SETGET))
+	{
+		uint8_t i;
+
+		// react on changed state (version for more than one switch...)
+		for (i = 0; i < SWITCH_COUNT; i++)
+		{
+			bool req_on = msg_gpio_digitalport_get_on(i);
+			UART_PUTF2("On[%u]:%u;", i, req_on);
+			switchRelais(i, req_on, 0, false);
+		}
+	}
+}
+
+void process_gpio_digitalpin(MessageTypeEnum messagetype)
+{
+	// "Set" or "SetGet" -> modify switch state
+	if ((messagetype == MESSAGETYPE_SET) || (messagetype == MESSAGETYPE_SETGET))
+	{
+		uint8_t req_pos = msg_gpio_digitalpin_get_pos();
+		bool req_on = msg_gpio_digitalpin_get_on();
+		UART_PUTF2("Pos:%u;On:%u;", req_pos, req_on);
+		switchRelais(req_pos, req_on, 0, false);
+	}
+}
+
+void process_gpio_digitalporttimeout(MessageTypeEnum messagetype)
+{
+	// "Set" or "SetGet" -> modify switch state
+	if ((messagetype == MESSAGETYPE_SET) || (messagetype == MESSAGETYPE_SETGET))
+	{
+		uint8_t i;
+
+		// react on changed state (version for more than one switch...)
+		for (i = 0; i < SWITCH_COUNT; i++)
+		{
+			bool req_on = msg_gpio_digitalporttimeout_get_on(i);
+			uint16_t req_timeout = msg_gpio_digitalporttimeout_get_timeoutsec(i);
+
+			UART_PUTF2("On[%u]:%u;", i, req_on);
+			UART_PUTF2("TimeoutSec[%u]:%u;", i, req_timeout);
+
+			switchRelais(i, req_on, req_timeout, false);
+		}
+	}
+}
+
+void process_gpio_digitalpintimeout(MessageTypeEnum messagetype)
+{
+	// "Set" or "SetGet" -> modify switch state
+	if ((messagetype == MESSAGETYPE_SET) || (messagetype == MESSAGETYPE_SETGET))
+	{
+		uint8_t req_pos = msg_gpio_digitalpintimeout_get_pos();
+		bool req_on = msg_gpio_digitalpintimeout_get_on();
+		uint16_t req_timeout = msg_gpio_digitalpintimeout_get_timeoutsec();
+		UART_PUTF2("Pos:%u;On:%u;", req_pos, req_on);
+		UART_PUTF("TimeoutSec:%u;", req_timeout);
+		switchRelais(req_pos, req_on, req_timeout, false);
+	}
+}
+
 // Process a request to this device.
 // React accordingly on the MessageType, MessageGroup and MessageID
 // and send an Ack in any case. It may be an error ack if request is not supported.
@@ -571,7 +686,10 @@ void process_request(MessageTypeEnum messagetype, uint32_t messagegroupid, uint3
 
 	UART_PUTF("MessageGroupID:%u;", messagegroupid);
 	
-	if (messagegroupid != MESSAGEGROUP_DIMMER)
+	if (
+		messagegroupid != MESSAGEGROUP_DIMMER
+		&& messagegroupid != MESSAGEGROUP_GPIO
+	)
 	{
 		UART_PUTS("\r\nERR: Unsupported MessageGroupID.\r\n");
 		send_ack(acksenderid, ackpacketcounter, true);
@@ -583,7 +701,11 @@ void process_request(MessageTypeEnum messagetype, uint32_t messagegroupid, uint3
 	if (
         (messageid != MESSAGEID_DIMMER_COLOR)
         && (messageid != MESSAGEID_DIMMER_COLORANIMATION)
-        && (messageid != MESSAGEID_DIMMER_BRIGHTNESS)
+		&& (messageid != MESSAGEID_DIMMER_BRIGHTNESS)
+		&& (messageid != MESSAGEID_GPIO_DIGITALPORT)
+		&& (messageid != MESSAGEID_GPIO_DIGITALPIN)
+		&& (messageid != MESSAGEID_GPIO_DIGITALPORTTIMEOUT)
+		&& (messageid != MESSAGEID_GPIO_DIGITALPINTIMEOUT)
     ) {
 		UART_PUTS("\r\nERR: Unsupported MessageID.\r\n");
 		send_ack(acksenderid, ackpacketcounter, true);
@@ -596,30 +718,30 @@ void process_request(MessageTypeEnum messagetype, uint32_t messagegroupid, uint3
 		if (messageid == MESSAGEID_DIMMER_COLORANIMATION)
 		{
 			uint8_t i;
-			
+
 			cli();
-			
+
 			repeat = msg_dimmer_coloranimation_get_repeat();
 			autoreverse = msg_dimmer_coloranimation_get_autoreverse();
 			step_pos = 0;
 			col_pos = 0;
 			anim_col[0] = current_col;
-			
+
 			UART_PUTF2("Repeat:%u;AutoReverse:%u;", repeat, autoreverse);
-			
+
 			for (i = 0; i < 10; i++)
 			{
 				anim_time[i] = msg_dimmer_coloranimation_get_time(i);
 				anim_col_i[i] = msg_dimmer_coloranimation_get_color(i);
-				
+
 				UART_PUTF2("Time[%u]:%u;", i, anim_time[i]);
 				UART_PUTF2("Color[%u]:%u;", i, anim_col_i[i]);
 			}
-			
+
 			init_animation();
 			step_len = timer_cycles[anim_time[0]];
 			update_current_col();
-			
+
 			sei();
 		}
 		else if (messageid == MESSAGEID_DIMMER_BRIGHTNESS)
@@ -633,6 +755,26 @@ void process_request(MessageTypeEnum messagetype, uint32_t messagegroupid, uint3
 			uint8_t color = msg_dimmer_color_get_color();
 			UART_PUTF("Color:%u;", color);
 			set_animation_fixed_color(color);
+		}
+	}
+
+	if (messagetype == MESSAGETYPE_SETGET)
+	{
+		if (messageid == MESSAGEID_GPIO_DIGITALPORT)
+		{
+			process_gpio_digitalport(messagetype);
+		}
+		else if (messageid == MESSAGEID_GPIO_DIGITALPIN)
+		{
+			process_gpio_digitalpin(messagetype);
+		}
+		else if (messageid == MESSAGEID_GPIO_DIGITALPORTTIMEOUT)
+		{
+			process_gpio_digitalporttimeout(messagetype);
+		}
+		else if (messageid == MESSAGEID_GPIO_DIGITALPINTIMEOUT)
+		{
+			process_gpio_digitalpintimeout(messagetype);
 		}
 	}
 
@@ -684,6 +826,25 @@ void process_request(MessageTypeEnum messagetype, uint32_t messagegroupid, uint3
             pkg_header_init_dimmer_brightness_ackstatus();
             msg_dimmer_brightness_set_brightness(brightness_factor);
         }
+		if (messagetype == MESSAGETYPE_SETGET
+			&& (messageid == MESSAGEID_GPIO_DIGITALPORT
+				|| messageid == MESSAGEID_GPIO_DIGITALPIN
+				|| messageid == MESSAGEID_GPIO_DIGITALPORTTIMEOUT
+				|| messageid == MESSAGEID_GPIO_DIGITALPINTIMEOUT)
+
+		) {
+			pkg_header_init_gpio_digitalporttimeout_ackstatus();
+
+			uint8_t i;
+
+			// react on changed state (version for more than one switch...)
+			for (i = 0; i < SWITCH_COUNT; i++)
+			{
+				// set message data
+				msg_gpio_digitalporttimeout_set_on(i, switch_state[i]);
+				msg_gpio_digitalporttimeout_set_timeoutsec(i, switch_timeout[i]);
+			}
+		}
 		
 		// set message data
 		UART_PUTS("Sending AckStatus\r\n");
@@ -757,6 +918,7 @@ void process_packet(uint8_t len)
 int main(void)
 {
 	uint8_t loop = 0;
+	uint8_t i;
 
 	// delay 1s to avoid further communication with uart or RFM12 when my programmer resets the MC after 500ms...
 	_delay_ms(1000);
@@ -764,6 +926,11 @@ int main(void)
 	util_init();
 	
 	check_eeprom_compatibility(DEVICETYPE_RGBDIMMER);
+
+	for (i = 0; i < SWITCH_COUNT; i++)
+	{
+		sbi(DDRC, RELAIS_PIN_START + i);
+	}
 	
 	// read packetcounter, increase by cycle and write back
 	packetcounter = e2p_generic_get_packetcounter() + PACKET_COUNTER_WRITE_CYCLE;
@@ -823,6 +990,11 @@ int main(void)
 
 	led_blink(500, 0, 1);
 
+	for (i = 0; i < SWITCH_COUNT; i++)
+	{
+		switchRelais(i, e2p_powerswitch_get_switchstate(i), e2p_powerswitch_get_switchtimeout(i), true);
+	}
+
 	sei();
 
 	while (42)
@@ -869,6 +1041,22 @@ int main(void)
 		if (loop == 50)
 		{
 			loop = 0;
+
+			// Check timeouts and toggle switches
+			for (i = 0; i < SWITCH_COUNT; i++)
+			{
+				if (switch_timeout[i])
+				{
+					switch_timeout[i]--;
+
+					if (switch_timeout[i] == 0)
+					{
+						UART_PUTS("Timeout! ");
+						switchRelais(i, !switch_state[i], 0, true);
+						send_status_timeout = 1; // immediately send the status update
+					}
+				}
+			}
 
 			// send status from time to time
 			send_status_timeout--;

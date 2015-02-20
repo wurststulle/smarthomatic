@@ -36,15 +36,15 @@ my %dev_state_icons = (
   "PowerSwitch"         => ".*10000000:on:off .*00000000:off:on set.*:light_question:off",
   "Dimmer"              => "on:on off:off set.*:light_question:off",
   "EnvSensor"           => undef,
-  "RGBDimmer"           => undef,
-  "SoilMoistureMeter"   => ".*H:\s\d\..*:ampel_rot"
+  "RGBDimmer"           => ".*10000000:on:off .*00000000:off:on set.*:light_question:off",
+  "SoilMoistureMeter"   => undef
 );
 
 my %web_cmds = (
   "PowerSwitch"         => "on:off:toggle:statusRequest",
   "Dimmer"              => "on:off:statusRequest",
   "EnvSensor"           => undef,
-  "RGBDimmer"           => undef,
+  "RGBDimmer"           => "on:off:toggle:statusRequest",
   "SoilMoistureMeter"   => undef
 );
 
@@ -65,7 +65,8 @@ my %dev_state_format = (
   ],
   "RGBDimmer"           => [
     "color",               "Color: ",
-    "brightness",	       "Brightness: "
+    "brightness",	       "Brightness: ",
+    "port",                "Port: "
   ],
   "SoilMoistureMeter"   => ["humidity", "H: "]
 );
@@ -88,7 +89,11 @@ my %sets = (
   "EnvSensor"           => "",
   "RGBDimmer"           => "Color " .
                            "ColorAnimation ".
-                           "Dimmer.Brightness:slider,0,1,100 ",
+                           "Dimmer.Brightness:slider,0,1,100 ".
+                           "DigitalPort " .
+                           "DigitalPortTimeout " .
+                           "DigitalPin " .
+                           "DigitalPinTimeout ",
   "SoilMoistureMeter"   => "",
   "Custom"              => "Dimmer.Brightness " .
                            "Dimmer.Animation"
@@ -567,6 +572,9 @@ sub SHCdev_Set($@)
       }
     }
     when ('RGBDimmer') {
+      if ($cmd eq 'toggle') {
+        $cmd = ReadingsVal($name, "on", "0") eq "0" ? "on" : "off";
+      }
       if ($cmd eq 'Color') {
         #TODO Verify argument values
         my $color = $arg;
@@ -618,6 +626,54 @@ sub SHCdev_Set($@)
         readingsSingleUpdate($hash, "state", "set-brightness:$brightness", 1);
         $parser->initPacket("Dimmer", "Brightness", "SetGet");
         $parser->setField("Dimmer", "Brightness", "Brightness", $brightness);
+        SHCdev_Send($hash);
+      } elsif (!$readonly && $cmd eq 'off') {
+        readingsSingleUpdate($hash, "state", "set-$cmd", 1);
+        $parser->initPacket("GPIO", "DigitalPin", "SetGet");
+        $parser->setField("GPIO", "DigitalPin", "Pos", 0);
+        $parser->setField("GPIO", "DigitalPin", "On", 0);
+        SHCdev_Send($hash);
+      } elsif (!$readonly && $cmd eq 'on') {
+        readingsSingleUpdate($hash, "state", "set-$cmd", 1);
+        $parser->initPacket("GPIO", "DigitalPin", "SetGet");
+        $parser->setField("GPIO", "DigitalPin", "Pos", 0);
+        $parser->setField("GPIO", "DigitalPin", "On", 1);
+        SHCdev_Send($hash);
+      } elsif ($cmd eq 'statusRequest') {
+        $parser->initPacket("GPIO", "DigitalPin", "Get");
+        SHCdev_Send($hash);
+      } elsif ($cmd eq 'DigitalPort') {
+        $parser->initPacket("GPIO", "DigitalPort", "SetGet");
+        # if not enough (less than 8) pinbits are available use zero as default
+        my $pinbits = $arg . "00000000";
+        for (my $i = 0 ; $i < 8 ; $i = $i + 1) {
+          $parser->setField("GPIO", "DigitalPort", "On", substr($pinbits, $i , 1), $i);
+        }
+        SHCdev_Send($hash);
+      } elsif ($cmd eq 'DigitalPortTimeout') { # TODO implement correctly
+        $parser->initPacket("GPIO", "DigitalPortTimeout", "SetGet");
+        # if not enough (less than 8) pinbits are available use zero as default
+        my $pinbits = $arg . "00000000";
+        for (my $i = 0 ; $i < 8 ; $i = $i + 1) {
+          my $pintimeout = "0";   # default value for timeout
+          if (exists  $aa[$i + 2]) {
+            $pintimeout = $aa[$i + 2];
+          }
+          Log3 $name, 3, "$name: $i: Pin: " . substr($pinbits, $i , 1) . " Timeout: $pintimeout";
+          $parser->setField("GPIO", "DigitalPortTimeout", "On", substr($pinbits, $i , 1), $i);
+          $parser->setField("GPIO", "DigitalPortTimeout", "TimeoutSec", $pintimeout, $i);
+        }
+        SHCdev_Send($hash);
+      } elsif ($cmd eq 'DigitalPin') {
+        $parser->initPacket("GPIO", "DigitalPin", "SetGet");
+        $parser->setField("GPIO", "DigitalPin", "Pos", $arg);
+        $parser->setField("GPIO", "DigitalPin", "On", $arg2);
+        SHCdev_Send($hash);
+      } elsif ($cmd eq 'DigitalPinTimeout') {
+        $parser->initPacket("GPIO", "DigitalPinTimeout", "SetGet");
+        $parser->setField("GPIO", "DigitalPinTimeout", "Pos", $arg);
+        $parser->setField("GPIO", "DigitalPinTimeout", "On", $arg2);
+        $parser->setField("GPIO", "DigitalPinTimeout", "TimeoutSec", $arg3);
         SHCdev_Send($hash);
       } else {
         return SetExtensions($hash, "", $name, @aa);
