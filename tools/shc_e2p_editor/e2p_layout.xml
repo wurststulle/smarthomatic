@@ -657,6 +657,23 @@
 			<MaxVal>63</MaxVal>
 			<DefaultVal>0</DefaultVal>
 		</UIntValue>
+		<Array>
+			<Length>8</Length>
+			<BoolValue>
+				<ID>SwitchState</ID>
+				<Description>This field stores the last known switch state(s) for eight switches to allow restoring the same state after power loss. It contains also the remaining timeout value. Fill this with zeros when creating a e2p file!</Description>
+			</BoolValue>
+		</Array>
+		<Array>
+			<Length>8</Length>
+			<UIntValue>
+				<ID>SwitchTimeout</ID>
+				<Description>This field stores the last known switch state(s) for eight switches to allow restoring the same state after power loss. It contains also the remaining timeout value. Fill this with zeros when creating a e2p file!</Description>
+				<Bits>16</Bits>
+				<MinVal>0</MinVal>
+				<MaxVal>65767</MaxVal>
+			</UIntValue>
+		</Array>
 		<Reserved>
 			<Bits>7642</Bits>
 		</Reserved>

@@ -29,7 +29,7 @@
 // E2P Block "RGBDimmer"
 // =====================
 // Start offset (bit): 512
-// Overall block length: 7680 bits
+// Overall block length: 7872 bits
 
 // BaseStationPacketCounter (UIntValue)
 // Description: This is the last remembered packet counter of a command from the base station. Packets with the same or lower number are ignored.
@@ -82,8 +82,42 @@ static inline uint8_t e2p_rgbdimmer_get_color(void)
   return eeprom_read_UIntValue8(544, 6, 0, 63);
 }
 
+// SwitchState (BoolValue[8])
+// Description: This field stores the last known switch state(s) for eight switches to allow restoring the same state after power loss. It contains also the remaining timeout value. Fill this with zeros when creating a e2p file!
+
+// Set SwitchState (BoolValue)
+// Offset: 550, length bits 8
+static inline void e2p_rgbdimmer_set_switchstate(uint8_t index, bool val)
+{
+  eeprom_write_UIntValue(550 + (uint16_t)index * 8, 8, val ? 1 : 0);
+}
+
+// Get SwitchState (BoolValue)
+// Offset: 550, length bits 8
+static inline bool e2p_rgbdimmer_get_switchstate(uint8_t index)
+{
+  return eeprom_read_UIntValue8(550 + (uint16_t)index * 8, 8, 0, 1) == 1;
+}
+
+// SwitchTimeout (UIntValue[8])
+// Description: This field stores the last known switch state(s) for eight switches to allow restoring the same state after power loss. It contains also the remaining timeout value. Fill this with zeros when creating a e2p file!
+
+// Set SwitchTimeout (UIntValue)
+// Offset: 614, length bits 16, min val 0, max val 65767
+static inline void e2p_rgbdimmer_set_switchtimeout(uint8_t index, uint16_t val)
+{
+  eeprom_write_UIntValue(614 + (uint16_t)index * 16, 16, val);
+}
+
+// Get SwitchTimeout (UIntValue)
+// Offset: 614, length bits 16, min val 0, max val 65767
+static inline uint16_t e2p_rgbdimmer_get_switchtimeout(uint8_t index)
+{
+  return eeprom_read_UIntValue16(614 + (uint16_t)index * 16, 16, 0, 65767);
+}
+
 // Reserved area with 7642 bits
-// Offset: 550
+// Offset: 742
 
 
 #endif /* _E2P_RGBDIMMER_H */

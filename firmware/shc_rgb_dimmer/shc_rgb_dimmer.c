@@ -582,7 +582,7 @@ void switchRelais(int8_t num, bool on, uint16_t timeout, bool dbgmsg)
 	if (change_state)
 	{
 		switch_state[num] = on;
-		e2p_powerswitch_set_switchstate(num, on);
+		e2p_rgbdimmer_set_switchstate(num, on);
 
 		if (on)
 		{
@@ -1009,13 +1009,15 @@ int main(void)
 
 	led_blink(500, 0, 1);
 
-	UART_PUTF ("Default color #%u\r\n", e2p_rgbdimmer_get_color());
-	current_col = index2color(e2p_rgbdimmer_get_color());
+	uint8_t color = e2p_rgbdimmer_get_color();
+
+	UART_PUTF ("Default color #%u\r\n", color);
+	current_col = index2color(color);
 	set_PWM(current_col);
 
 	for (i = 0; i < SWITCH_COUNT; i++)
 	{
-		switchRelais(i, e2p_powerswitch_get_switchstate(i), e2p_powerswitch_get_switchtimeout(i), true);
+		switchRelais(i, e2p_rgbdimmer_get_switchstate(i), e2p_rgbdimmer_get_switchtimeout(i), true);
 	}
 
 	sei();
