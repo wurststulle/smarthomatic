@@ -835,12 +835,16 @@ int main(void)
 	set_PWM(current_col);
 	switch_led(true);
 	_delay_ms(500);
-	current_col = index2color(e2p_rgbdimmer_get_color());
+	current_col = index2color(0);
 	set_PWM(current_col);
 	switch_led(false);
 	_delay_ms(500);
 
 	led_blink(500, 0, 1);
+
+	UART_PUTF ("Default color #%u\r\n", e2p_rgbdimmer_get_color());
+	current_col = index2color(e2p_rgbdimmer_get_color());
+	set_PWM(current_col);
 
 	sei();
 
