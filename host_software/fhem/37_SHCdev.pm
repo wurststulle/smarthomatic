@@ -87,7 +87,7 @@ my %sets = (
                            # Used from SetExtensions.pm
                            "blink on-for-timer on-till off-for-timer off-till intervals",
   "EnvSensor"           => "",
-  "RGBDimmer"           => "Color " .
+  "RGBDimmer"           => "Color ColorSave " .
                            "ColorAnimation ".
                            "Dimmer.Brightness:slider,0,1,100 ".
                            "DigitalPort " .
@@ -584,6 +584,13 @@ sub SHCdev_Set($@)
 
         readingsSingleUpdate($hash, "state", "set-color:$color", 1);
         $parser->initPacket("Dimmer", "Color", "SetGet");
+        $parser->setField("Dimmer", "Color", "Color",   $color);
+        SHCdev_Send($hash);
+      } elsif ($cmd eq 'ColorSave') {
+        my $color = $arg;
+
+        readingsSingleUpdate($hash, "state", "set-color:$color", 1);
+        $parser->initPacket("Dimmer", "Color", "SetGetSave");
         $parser->setField("Dimmer", "Color", "Color",   $color);
         SHCdev_Send($hash);
       } elsif ($cmd eq 'ColorAnimation') {
