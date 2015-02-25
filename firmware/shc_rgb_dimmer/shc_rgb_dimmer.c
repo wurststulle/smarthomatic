@@ -705,8 +705,9 @@ void process_request(MessageTypeEnum messagetype, uint32_t messagegroupid, uint3
 	}
 
 	// "Set" or "SetGet" -> modify color
-	if ((messagetype == MESSAGETYPE_SET) || (messagetype == MESSAGETYPE_SETGET))
-	{
+	if (
+        ((messagetype == MESSAGETYPE_SET) || (messagetype == MESSAGETYPE_SETGET)) && messagegroupid == MESSAGEGROUP_DIMMER
+    ) {
 		if (messageid == MESSAGEID_DIMMER_COLORANIMATION)
 		{
 			uint8_t i;
@@ -750,7 +751,7 @@ void process_request(MessageTypeEnum messagetype, uint32_t messagegroupid, uint3
 		}
 	}
 
-	if (messagetype == MESSAGETYPE_SETGET)
+	if (messagetype == MESSAGETYPE_SETGET && messagegroupid == MESSAGEGROUP_GPIO)
 	{
 		if (messageid == MESSAGEID_GPIO_DIGITALPORT)
 		{
